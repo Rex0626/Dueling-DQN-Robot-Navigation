@@ -57,6 +57,26 @@ class RobotNavigationEnvGUI(gym.Env):
         # 隨機初始車頭角度
         self.robot_theta = random.uniform(0, 2 * np.pi)
         
+        # 2. 🎯【Level 2 核心】：隨機生成目標點 (綠點)
+        # 使用 while 迴圈確保綠點不會與中央紅球重疊，且與機器人保持一定距離
+        while True:
+            candidate_target = np.array([
+                random.uniform(20, 380),
+                random.uniform(20, 200)  # 靠近地圖上方，強迫其穿越中央障礙物
+            ])
+            dist_to_obs = np.linalg.norm(candidate_target - self.obstacle_pos)
+            dist_to_robot = np.linalg.norm(candidate_target - self.robot_pos)
+            
+            # 確保與紅球中心距離大於 (紅球半徑 30 + 安全邊際 20)
+            if dist_to_obs > 50 and dist_to_robot > 100:
+                self.target_pos = candidate_target
+                break
+                
+        # 3. 如果開啟視覺化，實時將畫布上的綠點移到新座標
+        if self.render_mode:
+            self.canvas.coords("target", self.target_pos[0]-10, self.target_pos[1]-10, 
+                                         self.target_pos[0]+10, self.target_pos[1]+10)
+
         self.current_step = 0
         return self._get_obs(), {}
 

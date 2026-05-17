@@ -66,7 +66,7 @@ def plot_training_results(log_filename='training_log.csv'):
 
     # 4. 優化版面配置並儲存高解析度圖表
     plt.tight_layout()
-    output_fig = 'training_results_plot.png'
+    output_fig = 'training_results_plot2.png'
     plt.savefig(output_fig, dpi=300) # 設定 300 DPI 以符合印刷與論文提交標準
     
     print("\n==========================================")

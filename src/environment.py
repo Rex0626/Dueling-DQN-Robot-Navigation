@@ -81,18 +81,34 @@ class RobotNavigationEnvGUI(gym.Env):
         return self._get_obs(), {}
 
     def _get_obs(self):
-        # 🚩目標二：Lidar偵測加上"車頭朝向角度"
+        # 1. 計算基本物理量
         dist_to_obs = np.linalg.norm(self.robot_pos - self.obstacle_pos)
+        dist_to_target = np.linalg.norm(self.robot_pos - self.target_pos)
         
-        # 簡化Lidar，只看絕對距離(這部分在複雜環境會升級為局部雷達)
+        # 2. 🎯【保留並明確宣告】：左、前、右三向雷達訊號
+        # 目前簡化版讓三個方向都先讀取與中央紅球的絕對距離
+        lidar_left = dist_to_obs
         lidar_front = dist_to_obs
+        lidar_right = dist_to_obs
         
-        # 歸一化觀測值
+        # 3. 計算目標相對角度差
+        angle_to_target = np.arctan2(self.robot_pos[1] - self.target_pos[1], 
+                                     self.target_pos[0] - self.robot_pos[0])
+        if angle_to_target < 0: angle_to_target += 2 * np.pi
+        
+        self.angle_error = (angle_to_target - self.robot_theta)
+        self.angle_error = np.arctan2(np.sin(self.angle_error), np.cos(self.angle_error))
+        
+        # 4. 結構化回傳，這樣對應關係就一目了然了：
         return np.array([
-            self.robot_pos[0]/400.0, self.robot_pos[1]/400.0,
-            self.robot_theta / (2 * np.pi), # 角度歸一化
-            self.target_pos[0]/400.0, self.target_pos[1]/400.0,
-            dist_to_obs/400.0, dist_to_obs/400.0, dist_to_obs/400.0
+            self.robot_pos[0]/400.0,    # index 0: 機器人X
+            self.robot_pos[1]/400.0,    # index 1: 機器人Y
+            self.robot_theta / (2*np.pi),# index 2: 車頭角度
+            dist_to_target / 400.0,     # index 3: 相對目標距離
+            self.angle_error / np.pi,        # index 4: 相對目標角度差
+            lidar_left / 400.0,         # index 5: 雷達左
+            lidar_front / 400.0,        # index 6: 雷達前 (Safety Layer就是讀這個)
+            lidar_right / 400.0         # index 7: 雷達右
         ], dtype=np.float32)
 
     def step(self, action):
@@ -116,7 +132,11 @@ class RobotNavigationEnvGUI(gym.Env):
         dist_to_target = np.linalg.norm(self.robot_pos - self.target_pos)
         dist_to_obs = np.linalg.norm(self.robot_pos - self.obstacle_pos)
         
-        reward = -dist_to_target * 0.01
+        # 🎯【優化點二】：複合式獎勵函數
+        # 1. 距離目標越遠，給予微小懲罰
+        reward = -dist_to_target * 0.005 
+        # 2. 角度偏差懲罰：如果車頭歪掉太多，每一步都要扣分，逼它修正朝向
+        reward -= abs(self.angle_error) * 0.1
         terminated = False
         truncated = self.current_step >= self.max_steps
         

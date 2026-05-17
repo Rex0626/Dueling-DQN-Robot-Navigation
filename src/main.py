@@ -15,20 +15,22 @@ def main():
     agent = DuelingDQNAgent(state_dim=8, action_dim=4, enable_safety_layer=True)
     
     # 嘗試載入先前訓練過的大腦
-    model_filename = 'robot_model_level1.pth'
-    has_old_model = agent.load_model(model_filename)
+    load_model_filename = 'robot_model_level1.pth'
+    save_model_filename = 'robot_model_level2.pth'
+    has_old_model = agent.load_model(load_model_filename)
     
     if has_old_model:
-        agent.epsilon = 0.3  
+        # 💡 關鍵：給予 40% 的隨機探索率，強迫大腦在原有基礎上適應「會飄移的終點」
+        agent.epsilon = 0.4  
+        print("💡 已成功繼承 Level 1 經驗，並將 Epsilon 重設為 0.40 進行適應性訓練。") 
     
     # ─── 3. 套用命令列帶入的參數 ───
     episodes = args.episodes
     batch_size = 64
-    
     history_data = []
-    log_filename = 'training_log.csv'
-    
-    print(f"🚀 開始訓練，總計執行 {episodes} 個回合...")
+
+    log_filename = 'training_log_level2.csv'
+    print(f"🚀 開始訓練 Level 2：隨機起終點導航，總計執行 {episodes} 個回合...")
     
     for episode in range(episodes):
         state, _ = env.reset()
@@ -71,7 +73,7 @@ def main():
 
     # ─── 4. 數據持久化儲存 ───
     print("\n🏁 訓練完成！正在處理數據持久化...")
-    agent.save_model(model_filename)
+    agent.save_model(save_model_filename)
     
     with open(log_filename, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=['episode', 'reward', 'steps', 'epsilon', 'collision', 'success'])

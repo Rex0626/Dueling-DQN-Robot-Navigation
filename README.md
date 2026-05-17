@@ -56,5 +56,5 @@
 ### 一鍵安裝指令：
 請在 VS Code 終端機（Terminal）中輸入以下指令：
 ```bash
-pip install gymnasium numpy torch matplotlib
+pip install -r requirements.txt
 ```

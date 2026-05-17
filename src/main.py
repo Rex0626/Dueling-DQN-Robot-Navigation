@@ -1,0 +1,85 @@
+import argparse  # 📥 新增：引進參數解析模組
+import csv
+from environment import RobotNavigationEnvGUI
+from agent import DuelingDQNAgent
+
+def main():
+    # ─── 1. 設定命令列參數解析 ───
+    parser = argparse.ArgumentParser(description="Dueling-DQN 機器人訓練參數設定")
+    parser.add_argument('--episodes', type=int, default=300, help='設定訓練的總回合數 (預設: 300)')
+    parser.add_argument('--lr', type=float, default=1e-3, help='設定神經網路學習率 (預設: 0.001)')
+    args = parser.parse_args()
+
+    # ─── 2. 初始化環境與智慧體 ───
+    env = RobotNavigationEnvGUI(render_mode=True)
+    agent = DuelingDQNAgent(state_dim=8, action_dim=4, enable_safety_layer=True)
+    
+    # 嘗試載入先前訓練過的大腦
+    model_filename = 'robot_model_level1.pth'
+    has_old_model = agent.load_model(model_filename)
+    
+    if has_old_model:
+        agent.epsilon = 0.3  
+    
+    # ─── 3. 套用命令列帶入的參數 ───
+    episodes = args.episodes
+    batch_size = 64
+    
+    history_data = []
+    log_filename = 'training_log.csv'
+    
+    print(f"🚀 開始訓練，總計執行 {episodes} 個回合...")
+    
+    for episode in range(episodes):
+        state, _ = env.reset()
+        episode_reward = 0
+        step_count = 0
+        done = False
+        collision_occurred = 0
+        success_occurred = 0
+        
+        while not done:
+            action = agent.select_action(state)
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            
+            if terminated and reward < 0:  collision_occurred = 1
+            if terminated and reward > 20: success_occurred = 1
+                
+            agent.memory.push(state, action, reward, next_state, terminated)
+            agent.train(batch_size)
+            
+            state = next_state
+            episode_reward += reward
+            step_count += 1
+            
+        agent.decay_epsilon() 
+        
+        if (episode + 1) % 5 == 0:
+            agent.target_net.load_state_dict(agent.policy_net.state_dict())
+            
+        print(f"Episode {episode + 1}/{episodes} | 得分: {episode_reward:.2f} | 步數: {step_count} | Epsilon: {agent.epsilon:.2f}")
+        
+        history_data.append({
+            'episode': episode + 1,
+            'reward': round(episode_reward, 2),
+            'steps': step_count,
+            'epsilon': round(agent.epsilon, 4),
+            'collision': collision_occurred,
+            'success': success_occurred
+        })
+
+    # ─── 4. 數據持久化儲存 ───
+    print("\n🏁 訓練完成！正在處理數據持久化...")
+    agent.save_model(model_filename)
+    
+    with open(log_filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['episode', 'reward', 'steps', 'epsilon', 'collision', 'success'])
+        writer.writeheader()
+        writer.writerows(history_data)
+    print(f"📊 成功將訓練過程數據儲存至：{log_filename}")
+
+    env.root.mainloop()
+
+if __name__ == "__main__":
+    main()

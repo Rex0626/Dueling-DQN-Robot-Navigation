@@ -2,7 +2,9 @@ import csv
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_training_results(log_filename='training_log.csv'):
+log_filename='training_log3.csv'
+
+def plot_training_results(log_filename):
     """
     讀取訓練日誌 CSV 檔案，並繪製符合學術論文標準的收斂曲線與效率圖表。
     """
@@ -66,7 +68,7 @@ def plot_training_results(log_filename='training_log.csv'):
 
     # 4. 優化版面配置並儲存高解析度圖表
     plt.tight_layout()
-    output_fig = 'training_results_plot2.png'
+    output_fig = 'training_results_plot3.png'
     plt.savefig(output_fig, dpi=300) # 設定 300 DPI 以符合印刷與論文提交標準
     
     print("\n==========================================")
@@ -77,4 +79,4 @@ def plot_training_results(log_filename='training_log.csv'):
     plt.show()
 
 if __name__ == '__main__':
-    plot_training_results()
+    plot_training_results(log_filename)

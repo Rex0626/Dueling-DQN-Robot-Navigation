@@ -108,6 +108,17 @@ class RobotNavigationEnvGUI(gym.Env):
             width=2
         )
 
+        self.lidar_lines = []
+
+        for _ in range(3):
+            line = self.canvas.create_line(
+                0,0,0,0,
+                fill="orange",
+                dash=(3,2)
+            )
+
+            self.lidar_lines.append(line)
+
     # ==================================================
     # RESET
     # ==================================================
@@ -115,10 +126,28 @@ class RobotNavigationEnvGUI(gym.Env):
 
         super().reset(seed=seed)
 
-        self.robot_pos = np.array([
-            random.uniform(20, 80),
-            random.uniform(300, 380)
-        ])
+        # ==================================================
+        # 隨機起點
+        # ==================================================
+        while True:
+
+            candidate_pos = np.array([
+                random.uniform(30, 370),
+                random.uniform(30, 370)
+            ])
+
+            safe = True
+
+            for obs in self.obstacles:
+                dist = np.linalg.norm(candidate_pos - obs["pos"])
+
+                if dist < (obs["radius"] + 25):
+                    safe = False
+                    break
+
+            if safe:
+                self.robot_pos = candidate_pos
+                break
 
         self.robot_theta = random.uniform(0, 2*np.pi)
 
@@ -167,22 +196,37 @@ class RobotNavigationEnvGUI(gym.Env):
         return self._get_obs(), {}
 
     # ==================================================
-    # 最近障礙物 LiDAR
+    # Directional LiDAR
     # ==================================================
-    def get_nearest_obstacle_distance(self):
+    def cast_lidar_ray(self, angle, max_range=120):
 
-        min_dist = 9999
+        step_size = 4
 
-        for obs in self.obstacles:
+        for dist in range(0, max_range, step_size):
 
-            dist = np.linalg.norm(
-                self.robot_pos - obs["pos"]
-            )
+            test_x = self.robot_pos[0] + dist * np.cos(angle)
+            test_y = self.robot_pos[1] - dist * np.sin(angle)
 
-            if dist < min_dist:
-                min_dist = dist
+            # 撞牆
+            if (
+                test_x <= 0 or
+                test_x >= self.map_size or
+                test_y <= 0 or
+                test_y >= self.map_size
+            ):
+                return dist
 
-        return min_dist
+            # 撞障礙物
+            for obs in self.obstacles:
+
+                d = np.linalg.norm(
+                    np.array([test_x, test_y]) - obs["pos"]
+                )
+
+                if d <= obs["radius"]:
+                    return dist
+
+        return max_range
 
     # ==================================================
     # OBSERVATION
@@ -193,12 +237,12 @@ class RobotNavigationEnvGUI(gym.Env):
             self.robot_pos - self.target_pos
         )
 
-        nearest_obs_dist = self.get_nearest_obstacle_distance()
-
-        # 簡化版 LiDAR
-        lidar_left = nearest_obs_dist
-        lidar_front = nearest_obs_dist
-        lidar_right = nearest_obs_dist
+        # ==================================================
+        # Directional LiDAR
+        # ==================================================
+        lidar_left = self.cast_lidar_ray(self.robot_theta + np.deg2rad(45))
+        lidar_front = self.cast_lidar_ray(self.robot_theta)
+        lidar_right = self.cast_lidar_ray(self.robot_theta - np.deg2rad(45))
 
         angle_to_target = np.arctan2(
             self.robot_pos[1] - self.target_pos[1],
@@ -353,10 +397,8 @@ class RobotNavigationEnvGUI(gym.Env):
 
         self.canvas.coords(
             self.robot_marker,
-
             self.robot_pos[0]-r,
             self.robot_pos[1]-r,
-
             self.robot_pos[0]+r,
             self.robot_pos[1]+r
         )
@@ -365,14 +407,35 @@ class RobotNavigationEnvGUI(gym.Env):
 
         self.canvas.coords(
             self.robot_line,
-
             self.robot_pos[0],
             self.robot_pos[1],
-
             self.robot_pos[0] + line_len*np.cos(self.robot_theta),
-
             self.robot_pos[1] - line_len*np.sin(self.robot_theta)
         )
+
+        lidar_angles = [
+            self.robot_theta + np.deg2rad(45),
+            self.robot_theta,
+            self.robot_theta - np.deg2rad(45)
+        ]
+
+        lidar_dists = [
+            self.cast_lidar_ray(lidar_angles[0]),
+            self.cast_lidar_ray(lidar_angles[1]),
+            self.cast_lidar_ray(lidar_angles[2])
+        ]
+
+        for i in range(3):
+            end_x = (self.robot_pos[0] + lidar_dists[i] * np.cos(lidar_angles[i]))
+            end_y = (self.robot_pos[1] - lidar_dists[i] * np.sin(lidar_angles[i]))
+
+            self.canvas.coords(
+                self.lidar_lines[i],
+                self.robot_pos[0],
+                self.robot_pos[1],
+                end_x,
+                end_y
+            )
 
         self.root.update_idletasks()
         self.root.update()

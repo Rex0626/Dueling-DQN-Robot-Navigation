@@ -1,20 +1,19 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import tkinter as tk
-import time
+import pygame
 import random
+
 
 class RobotNavigationEnvGUI(gym.Env):
 
     def __init__(self, render_mode=True):
+
         super(RobotNavigationEnvGUI, self).__init__()
 
-        # state:
-        # [robot_x, robot_y, theta,
-        #  dist_to_target, angle_error,
-        #  lidar_left, lidar_front, lidar_right]
-
+        # ==================================================
+        # Observation Space
+        # ==================================================
         self.observation_space = spaces.Box(
             low=-10.0,
             high=10.0,
@@ -22,25 +21,37 @@ class RobotNavigationEnvGUI(gym.Env):
             dtype=np.float32
         )
 
-        # 0 forward
-        # 1 left
-        # 2 right
-        # 3 brake
+        # ==================================================
+        # Action Space
+        # 0 = forward
+        # 1 = turn left
+        # 2 = turn right
+        # 3 = brake
+        # ==================================================
         self.action_space = spaces.Discrete(4)
 
+        # ==================================================
+        # Map Settings
+        # ==================================================
         self.map_size = 400
 
         self.linear_vel = 8.0
         self.angular_vel = np.deg2rad(15)
 
+        # ==================================================
+        # Robot
+        # ==================================================
         self.robot_pos = np.array([50.0, 350.0])
         self.robot_theta = 0.0
 
+        # ==================================================
+        # Target
+        # ==================================================
         self.target_pos = np.array([350.0, 50.0])
 
-        # =========================
-        # Level3 多障礙物
-        # =========================
+        # ==================================================
+        # Obstacles
+        # ==================================================
         self.obstacles = [
             {"pos": np.array([120.0, 150.0]), "radius": 25},
             {"pos": np.array([220.0, 220.0]), "radius": 35},
@@ -48,76 +59,30 @@ class RobotNavigationEnvGUI(gym.Env):
             {"pos": np.array([180.0, 80.0]),  "radius": 20},
         ]
 
+        # ==================================================
+        # Episode Settings
+        # ==================================================
         self.max_steps = 300
         self.current_step = 0
 
+        # ==================================================
+        # Render
+        # ==================================================
         self.render_mode = render_mode
 
         if self.render_mode:
-            self.root = tk.Tk()
-            self.root.title("Level3 Multi-Obstacle Navigation")
 
-            self.canvas = tk.Canvas(
-                self.root,
-                width=self.map_size,
-                height=self.map_size,
-                bg="white"
-            )
-            self.canvas.pack()
+            pygame.init()
 
-            self.setup_canvas_objects()
-
-    # ==================================================
-    # GUI
-    # ==================================================
-    def setup_canvas_objects(self):
-
-        # target
-        self.canvas.create_oval(
-            self.target_pos[0]-10,
-            self.target_pos[1]-10,
-            self.target_pos[0]+10,
-            self.target_pos[1]+10,
-            fill="green",
-            tags="target"
-        )
-
-        # 多障礙物
-        for obs in self.obstacles:
-
-            pos = obs["pos"]
-            r = obs["radius"]
-
-            self.canvas.create_oval(
-                pos[0]-r,
-                pos[1]-r,
-                pos[0]+r,
-                pos[1]+r,
-                fill="red",
-                tags="obstacle"
+            self.screen = pygame.display.set_mode(
+                (self.map_size, self.map_size)
             )
 
-        self.robot_marker = self.canvas.create_oval(
-            0, 0, 0, 0,
-            fill="blue"
-        )
-
-        self.robot_line = self.canvas.create_line(
-            0, 0, 0, 0,
-            fill="black",
-            width=2
-        )
-
-        self.lidar_lines = []
-
-        for _ in range(3):
-            line = self.canvas.create_line(
-                0,0,0,0,
-                fill="orange",
-                dash=(3,2)
+            pygame.display.set_caption(
+                "Level4 Navigation"
             )
 
-            self.lidar_lines.append(line)
+            self.clock = pygame.time.Clock()
 
     # ==================================================
     # RESET
@@ -127,7 +92,7 @@ class RobotNavigationEnvGUI(gym.Env):
         super().reset(seed=seed)
 
         # ==================================================
-        # 隨機起點
+        # Random Start Position
         # ==================================================
         while True:
 
@@ -139,21 +104,32 @@ class RobotNavigationEnvGUI(gym.Env):
             safe = True
 
             for obs in self.obstacles:
-                dist = np.linalg.norm(candidate_pos - obs["pos"])
+
+                dist = np.linalg.norm(
+                    candidate_pos - obs["pos"]
+                )
 
                 if dist < (obs["radius"] + 25):
+
                     safe = False
                     break
 
             if safe:
+
                 self.robot_pos = candidate_pos
                 break
 
-        self.robot_theta = random.uniform(0, 2*np.pi)
+        # ==================================================
+        # Random Heading
+        # ==================================================
+        self.robot_theta = random.uniform(
+            0,
+            2*np.pi
+        )
 
-        # =========================
-        # 隨機終點
-        # =========================
+        # ==================================================
+        # Random Goal
+        # ==================================================
         while True:
 
             candidate_target = np.array([
@@ -174,22 +150,14 @@ class RobotNavigationEnvGUI(gym.Env):
                 )
 
                 if dist < (obs["radius"] + 25):
+
                     safe = False
                     break
 
             if safe and dist_to_robot > 120:
+
                 self.target_pos = candidate_target
                 break
-
-        if self.render_mode:
-
-            self.canvas.coords(
-                "target",
-                self.target_pos[0]-10,
-                self.target_pos[1]-10,
-                self.target_pos[0]+10,
-                self.target_pos[1]+10
-            )
 
         self.current_step = 0
 
@@ -204,10 +172,17 @@ class RobotNavigationEnvGUI(gym.Env):
 
         for dist in range(0, max_range, step_size):
 
-            test_x = self.robot_pos[0] + dist * np.cos(angle)
-            test_y = self.robot_pos[1] - dist * np.sin(angle)
+            test_x = (
+                self.robot_pos[0]
+                + dist*np.cos(angle)
+            )
 
-            # 撞牆
+            test_y = (
+                self.robot_pos[1]
+                - dist*np.sin(angle)
+            )
+
+            # Wall collision
             if (
                 test_x <= 0 or
                 test_x >= self.map_size or
@@ -216,11 +191,12 @@ class RobotNavigationEnvGUI(gym.Env):
             ):
                 return dist
 
-            # 撞障礙物
+            # Obstacle collision
             for obs in self.obstacles:
 
                 d = np.linalg.norm(
-                    np.array([test_x, test_y]) - obs["pos"]
+                    np.array([test_x, test_y])
+                    - obs["pos"]
                 )
 
                 if d <= obs["radius"]:
@@ -229,7 +205,7 @@ class RobotNavigationEnvGUI(gym.Env):
         return max_range
 
     # ==================================================
-    # OBSERVATION
+    # Observation
     # ==================================================
     def _get_obs(self):
 
@@ -240,9 +216,17 @@ class RobotNavigationEnvGUI(gym.Env):
         # ==================================================
         # Directional LiDAR
         # ==================================================
-        lidar_left = self.cast_lidar_ray(self.robot_theta + np.deg2rad(45))
-        lidar_front = self.cast_lidar_ray(self.robot_theta)
-        lidar_right = self.cast_lidar_ray(self.robot_theta - np.deg2rad(45))
+        lidar_left = self.cast_lidar_ray(
+            self.robot_theta + np.deg2rad(45)
+        )
+
+        lidar_front = self.cast_lidar_ray(
+            self.robot_theta
+        )
+
+        lidar_right = self.cast_lidar_ray(
+            self.robot_theta - np.deg2rad(45)
+        )
 
         angle_to_target = np.arctan2(
             self.robot_pos[1] - self.target_pos[1],
@@ -262,6 +246,7 @@ class RobotNavigationEnvGUI(gym.Env):
         )
 
         return np.array([
+
             self.robot_pos[0] / 400.0,
             self.robot_pos[1] / 400.0,
             self.robot_theta / (2*np.pi),
@@ -286,17 +271,19 @@ class RobotNavigationEnvGUI(gym.Env):
             self.robot_pos - self.target_pos
         )
 
-        # =========================
-        # 動作
-        # =========================
+        # ==================================================
+        # Action
+        # ==================================================
         if action == 0:
 
             self.robot_pos[0] += (
-                self.linear_vel * np.cos(self.robot_theta)
+                self.linear_vel
+                * np.cos(self.robot_theta)
             )
 
             self.robot_pos[1] -= (
-                self.linear_vel * np.sin(self.robot_theta)
+                self.linear_vel
+                * np.sin(self.robot_theta)
             )
 
         elif action == 1:
@@ -308,6 +295,7 @@ class RobotNavigationEnvGUI(gym.Env):
             self.robot_theta -= self.angular_vel
 
         elif action == 3:
+
             pass
 
         self.robot_theta %= (2*np.pi)
@@ -327,18 +315,18 @@ class RobotNavigationEnvGUI(gym.Env):
         # ==================================================
         # Reward Shaping
         # ==================================================
-
-        # 基礎時間懲罰
         reward = -0.05
 
-        # 越接近目標越好
-        reward += (prev_dist - dist_to_target) * 0.2
+        # closer to target
+        reward += (
+            prev_dist - dist_to_target
+        ) * 0.2
 
-        # 朝向目標獎勵
+        # heading reward
         reward -= abs(self.angle_error) * 0.05
 
         # ==================================================
-        # 成功抵達
+        # Goal Reached
         # ==================================================
         if dist_to_target < 15:
 
@@ -349,7 +337,7 @@ class RobotNavigationEnvGUI(gym.Env):
             print("✨ 成功抵達目標")
 
         # ==================================================
-        # 多障礙物碰撞
+        # Obstacle Collision
         # ==================================================
         for obs_item in self.obstacles:
 
@@ -368,7 +356,7 @@ class RobotNavigationEnvGUI(gym.Env):
                 break
 
         # ==================================================
-        # 撞牆
+        # Wall Collision
         # ==================================================
         if (
             self.robot_pos[0] <= 8 or
@@ -383,6 +371,9 @@ class RobotNavigationEnvGUI(gym.Env):
 
             print("🧱 撞牆")
 
+        # ==================================================
+        # Render
+        # ==================================================
         if self.render_mode:
             self.render()
 
@@ -393,51 +384,135 @@ class RobotNavigationEnvGUI(gym.Env):
     # ==================================================
     def render(self):
 
-        r = 8
+        # ==================================================
+        # Handle Events
+        # ==================================================
+        for event in pygame.event.get():
 
-        self.canvas.coords(
-            self.robot_marker,
-            self.robot_pos[0]-r,
-            self.robot_pos[1]-r,
-            self.robot_pos[0]+r,
-            self.robot_pos[1]+r
+            if event.type == pygame.QUIT:
+
+                pygame.quit()
+                exit()
+
+        # ==================================================
+        # Background
+        # ==================================================
+        self.screen.fill((255,255,255))
+
+        # ==================================================
+        # Draw Obstacles
+        # ==================================================
+        for obs in self.obstacles:
+
+            pygame.draw.circle(
+                self.screen,
+                (255,0,0),
+                obs["pos"].astype(int),
+                obs["radius"]
+            )
+
+        # ==================================================
+        # Draw Target
+        # ==================================================
+        pygame.draw.circle(
+            self.screen,
+            (0,255,0),
+            self.target_pos.astype(int),
+            10
         )
 
+        # ==================================================
+        # Draw Robot
+        # ==================================================
+        pygame.draw.circle(
+            self.screen,
+            (0,0,255),
+            self.robot_pos.astype(int),
+            8
+        )
+
+        # ==================================================
+        # Draw Heading
+        # ==================================================
         line_len = 15
 
-        self.canvas.coords(
-            self.robot_line,
-            self.robot_pos[0],
-            self.robot_pos[1],
-            self.robot_pos[0] + line_len*np.cos(self.robot_theta),
-            self.robot_pos[1] - line_len*np.sin(self.robot_theta)
+        end_x = (
+            self.robot_pos[0]
+            + line_len*np.cos(self.robot_theta)
         )
 
+        end_y = (
+            self.robot_pos[1]
+            - line_len*np.sin(self.robot_theta)
+        )
+
+        pygame.draw.line(
+            self.screen,
+            (0,0,0),
+            self.robot_pos.astype(int),
+            (int(end_x), int(end_y)),
+            2
+        )
+
+        # ==================================================
+        # Draw LiDAR Rays
+        # ==================================================
         lidar_angles = [
+
             self.robot_theta + np.deg2rad(45),
             self.robot_theta,
             self.robot_theta - np.deg2rad(45)
         ]
 
         lidar_dists = [
-            self.cast_lidar_ray(lidar_angles[0]),
-            self.cast_lidar_ray(lidar_angles[1]),
-            self.cast_lidar_ray(lidar_angles[2])
+
+            self.cast_lidar_ray(angle)
+
+            for angle in lidar_angles
         ]
 
-        for i in range(3):
-            end_x = (self.robot_pos[0] + lidar_dists[i] * np.cos(lidar_angles[i]))
-            end_y = (self.robot_pos[1] - lidar_dists[i] * np.sin(lidar_angles[i]))
+        for angle, dist in zip(
+            lidar_angles,
+            lidar_dists
+        ):
 
-            self.canvas.coords(
-                self.lidar_lines[i],
-                self.robot_pos[0],
-                self.robot_pos[1],
-                end_x,
-                end_y
+            end_x = (
+                self.robot_pos[0]
+                + dist*np.cos(angle)
             )
 
-        self.root.update_idletasks()
-        self.root.update()
+            end_y = (
+                self.robot_pos[1]
+                - dist*np.sin(angle)
+            )
 
-        time.sleep(0.01)
+            pygame.draw.line(
+
+                self.screen,
+
+                (255,165,0),
+
+                self.robot_pos.astype(int),
+
+                (int(end_x), int(end_y)),
+
+                2
+            )
+
+        # ==================================================
+        # Update Display
+        # ==================================================
+        pygame.display.flip()
+
+        # ==================================================
+        # FPS Limit
+        # ==================================================
+        self.clock.tick(120)
+
+    # ==================================================
+    # Close
+    # ==================================================
+    def close(self):
+
+        if self.render_mode:
+            pygame.quit()

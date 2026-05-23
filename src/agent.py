@@ -19,9 +19,16 @@ class DuelingDQNAgent:
     def __init__(self, state_dim, action_dim, enable_safety_layer=True):
         self.action_dim = action_dim
         self.enable_safety_layer = enable_safety_layer
+
+        # ====================================
+        # GPU Device
+        # ====================================
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("🚀 Using device:", self.device)
         
-        self.policy_net = DuelingQNetwork(state_dim, action_dim)
-        self.target_net = DuelingQNetwork(state_dim, action_dim)
+        self.policy_net = DuelingQNetwork(state_dim,action_dim).to(self.device)
+        self.target_net = DuelingQNetwork(state_dim,action_dim).to(self.device)
+        
         self.target_net.load_state_dict(self.policy_net.state_dict())
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-3)
@@ -43,7 +50,7 @@ class DuelingDQNAgent:
         if random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
         
-        state_t = torch.FloatTensor(state).unsqueeze(0)
+        state_t = (torch.FloatTensor(state).unsqueeze(0).to(self.device))
         with torch.no_grad():
             return self.policy_net(state_t).argmax().item()
 
@@ -51,11 +58,11 @@ class DuelingDQNAgent:
         if len(self.memory) < batch_size: return
         states, actions, rewards, next_states, dones = self.memory.sample(batch_size)
         
-        states_t = torch.FloatTensor(states)
-        actions_t = torch.LongTensor(actions).unsqueeze(1)
-        rewards_t = torch.FloatTensor(rewards)
-        next_states_t = torch.FloatTensor(next_states)
-        dones_t = torch.FloatTensor(dones)
+        states_t = torch.FloatTensor(states).to(self.device)
+        actions_t = torch.LongTensor(actions).unsqueeze(1).to(self.device)
+        rewards_t = torch.FloatTensor(rewards).to(self.device)
+        next_states_t = torch.FloatTensor(next_states).to(self.device)
+        dones_t = torch.FloatTensor(dones).to(self.device)
         
         current_q_values = self.policy_net(states_t).gather(1, actions_t).squeeze(1)
         with torch.no_grad():
@@ -81,7 +88,7 @@ class DuelingDQNAgent:
     def load_model(self, filepath='robot_model.pth'):
         import os
         if os.path.exists(filepath):
-            self.policy_net.load_state_dict(torch.load(filepath))
+            self.policy_net.load_state_dict(torch.load(filepath, map_location=self.device))
             self.target_net.load_state_dict(self.policy_net.state_dict())
             print(f"📖 成功載入先前的模型權重：{filepath}")
             return True

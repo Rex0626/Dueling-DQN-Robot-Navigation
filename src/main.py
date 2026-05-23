@@ -6,12 +6,13 @@ from agent import DuelingDQNAgent
 def main():
     # ─── 1. 設定命令列參數解析 ───
     parser = argparse.ArgumentParser(description="Dueling-DQN 機器人訓練參數設定")
-    parser.add_argument('--episodes', type=int, default=300, help='設定訓練的總回合數 (預設: 300)')
+    parser.add_argument('--episodes', type=int, default=600, help='設定訓練的總回合數 (預設: 600)')
     parser.add_argument('--lr', type=float, default=1e-3, help='設定神經網路學習率 (預設: 0.001)')
+    parser.add_argument('--render', action='store_true', help='是否開啟 pygame GUI')
     args = parser.parse_args()
 
     # ─── 2. 初始化環境與智慧體 ───
-    env = RobotNavigationEnvGUI(render_mode=True)
+    env = RobotNavigationEnvGUI(render_mode=args.render)
     agent = DuelingDQNAgent(state_dim=8, action_dim=4, enable_safety_layer=True)
     
     # 嘗試載入先前訓練過的大腦
@@ -54,9 +55,6 @@ def main():
             state = next_state
             episode_reward += reward
             step_count += 1
-
-            if env.render_mode:
-                env.root.update()  # 更新 GUI 畫面
             
         agent.decay_epsilon() 
         
@@ -83,8 +81,6 @@ def main():
         writer.writeheader()
         writer.writerows(history_data)
     print(f"📊 成功將訓練過程數據儲存至：{log_filename}")
-
-    env.root.mainloop()
 
 if __name__ == "__main__":
     main()

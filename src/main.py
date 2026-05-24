@@ -13,7 +13,7 @@ def main():
 
     # ─── 2. 初始化環境與智慧體 ───
     env = RobotNavigationEnvGUI(render_mode=args.render)
-    agent = DuelingDQNAgent(state_dim=8, action_dim=4, enable_safety_layer=True)
+    agent = DuelingDQNAgent(state_dim=12, action_dim=4, enable_safety_layer=True)
     
     # 嘗試載入先前訓練過的大腦
     load_model_filename = 'robot_model_level4.pth'

@@ -35,8 +35,8 @@ class DuelingDQNAgent:
         self.memory = ReplayBuffer(5000)
         
         self.epsilon = 1.0
-        self.epsilon_decay = 0.99
-        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.995
+        self.epsilon_min = 0.1
         self.gamma = 0.95
 
     def select_action(self, state):

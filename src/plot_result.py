@@ -2,7 +2,7 @@ import csv
 import matplotlib.pyplot as plt
 import numpy as np
 
-log_filename='training_log3.csv'
+log_filename='training_log_level4.csv'
 
 def plot_training_results(log_filename):
     """
@@ -68,7 +68,7 @@ def plot_training_results(log_filename):
 
     # 4. 優化版面配置並儲存高解析度圖表
     plt.tight_layout()
-    output_fig = 'training_results_plot3.png'
+    output_fig = 'training_results_plot4.png'
     plt.savefig(output_fig, dpi=300) # 設定 300 DPI 以符合印刷與論文提交標準
     
     print("\n==========================================")

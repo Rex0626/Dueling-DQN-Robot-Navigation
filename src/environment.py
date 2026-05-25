@@ -230,11 +230,25 @@ class RobotNavigationEnvGUI(gym.Env):
         # ==================================================
         # Reward Shaping
         # ==================================================
-        reward = -0.05
-        reward += (prev_dist - dist_to_target) * 1.5 # closer to target
-        reward -= abs(self.angle_error) * 0.3 # heading reward
-        heading_reward = np.cos(self.angle_error)
-        reward += heading_reward * 0.5
+        reward = -0.1  # 稍微提高每步的基礎懲罰，逼迫機器人盡快找到目標
+        
+        # 依據執行的動作給予不同的獎勵與懲罰
+        if action == 0:
+            # 只有在「前進」時，才計算距離縮短的獎勵
+            reward += (prev_dist - dist_to_target) * 2.0
+            heading_reward = np.cos(self.angle_error)
+            if heading_reward > 0: 
+                # 只有面對目標方向前進時，才給予額外角度獎勵
+                reward += heading_reward * 0.5
+        elif action in [1, 2]:
+            # 給予轉向動作微小的懲罰，打破「原地打轉最安全」的保守策略
+            reward -= 0.25 
+        elif action == 3:
+            # 嚴格懲罰無意義的煞車行為，防止原地發呆
+            reward -= 2.0  
+            
+        # 輕微懲罰背對目標的狀態，引導機器人面朝正確方向
+        reward -= abs(self.angle_error) * 0.1
 
         # ==================================================
         # Goal Reached

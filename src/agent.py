@@ -31,20 +31,27 @@ class DuelingDQNAgent:
         
         self.target_net.load_state_dict(self.policy_net.state_dict())
         
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-3)
-        self.memory = ReplayBuffer(5000)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
+        self.memory = ReplayBuffer(50000)
         
         self.epsilon = 1.0
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.998
         self.epsilon_min = 0.1
-        self.gamma = 0.95
+        self.gamma = 0.99
 
     def select_action(self, state):
         # 🔍 【異常響應機制 (Safety Layer)】
         if self.enable_safety_layer:
-            lidar_front = state[5] * 400.0  # 還原真實像素距離
-            if lidar_front < 45.0:          # 觸發安全臨界值
-                return 3                    # 強制執行煞車動作
+            target_dist = state[3] * 400.0  # 讀取機器人與目標的當前距離
+            lidar_front = state[8] * 400.0  # 讀取正前方雷達的距離
+            
+            # 💡 核心修正：
+            # 若前方有障礙物 (距離 < 45)，且「障礙物比目標還近」時，才啟動強制避障
+            if lidar_front < 45.0 and lidar_front < target_dist:
+                # 比較左右兩側空間，決定向哪邊轉彎脫困
+                lidar_left = state[5] * 400.0
+                lidar_right = state[11] * 400.0
+                return 1 if lidar_left > lidar_right else 2
                 
         # 🤖 【標準 Dueling-DQN 決策】
         if random.random() < self.epsilon:
@@ -72,6 +79,7 @@ class DuelingDQNAgent:
         loss = torch.nn.functional.mse_loss(current_q_values, target_q_values)
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
         
     # 🧪 【探索率衰減

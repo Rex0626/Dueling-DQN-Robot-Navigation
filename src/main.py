@@ -22,7 +22,7 @@ def main():
     
     if has_old_model:
         # 💡 關鍵：給予 30% 的隨機探索率，強迫大腦在原有基礎上適應「會飄移的終點」
-        agent.epsilon = 0.3  
+        agent.epsilon = 0.5  
         print("💡 已成功繼承 Level 4 經驗，並將 Epsilon 重設為 0.30 進行適應性訓練。") 
     
     # ─── 3. 套用命令列帶入的參數 ───
@@ -33,6 +33,8 @@ def main():
     log_filename = 'training_log_level4.csv'
     print(f"🚀 開始訓練 Level 4：隨機起終點導航，總計執行 {episodes} 個回合...")
     
+    global_steps = 0
+
     for episode in range(episodes):
         state, _ = env.reset()
         episode_reward = 0
@@ -50,16 +52,20 @@ def main():
             if terminated and reward > 20: success_occurred = 1
                 
             agent.memory.push(state, action, reward, next_state, terminated)
-            agent.train(batch_size)
-            
+            if global_steps % 4 == 0 and len(agent.memory) > 1000:
+                agent.train(batch_size)
+          
             state = next_state
             episode_reward += reward
             step_count += 1
+
+            global_steps += 1
+            
+            if global_steps % 500 == 0:
+                agent.target_net.load_state_dict(agent.policy_net.state_dict())
+                print(f"🔄 [Global Step {global_steps}] 同步目標網路 (Target Network) 權重")
             
         agent.decay_epsilon() 
-        
-        if (episode + 1) % 5 == 0:
-            agent.target_net.load_state_dict(agent.policy_net.state_dict())
             
         print(f"Episode {episode + 1}/{episodes} | 得分: {episode_reward:.2f} | 步數: {step_count} | Epsilon: {agent.epsilon:.2f}")
         

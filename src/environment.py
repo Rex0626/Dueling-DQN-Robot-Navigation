@@ -165,7 +165,11 @@ class RobotNavigationEnvGUI(gym.Env):
     def step(self, action):
         self.current_step += 1
         prev_dist = np.linalg.norm(self.robot_pos - self.target_pos)
+        prev_angle_error = abs(self.angle_error) # 💡 新增：記錄執行動作前的角度誤差
 
+        # ==================================================
+        # Action
+        # ==================================================
         if action == 0:
             self.robot_pos[0] += (self.linear_vel * np.cos(self.robot_theta))
             self.robot_pos[1] -= (self.linear_vel * np.sin(self.robot_theta))
@@ -177,31 +181,43 @@ class RobotNavigationEnvGUI(gym.Env):
             pass
 
         self.robot_theta %= (2*np.pi)
-        obs = self._get_obs()
+        obs = self._get_obs() # 這裡會更新 self.angle_error
 
         dist_to_target = np.linalg.norm(self.robot_pos - self.target_pos)
         terminated = False
         truncated = (self.current_step >= self.max_steps)
 
-        reward = -0.1
-        
+        # ==================================================
+        # 💡 優化版 Reward Shaping (治癒原地踏步)
+        # ==================================================
+        reward = -0.1  # 基礎時間懲罰
+
+        # 1. 距離獎勵 (只有在前進時才結算)
         if action == 0:
             reward += (prev_dist - dist_to_target) * 2.0
-            heading_reward = np.cos(self.angle_error)
-            if heading_reward > 0: 
-                reward += heading_reward * 0.5
-        elif action in [1, 2]:
-            reward -= 0.25 
         elif action == 3:
-            reward -= 2.0  
-            
-        reward -= abs(self.angle_error) * 0.1
+            reward -= 1.0  # 嚴懲無意義的煞車發呆
 
+        # 2. 角度改善獎勵 (解決原地打轉與左右震盪的核心)
+        # 如果新角度誤差比舊角度小，代表轉向正確，給予豐厚獎勵；反之懲罰。
+        angle_improvement = prev_angle_error - abs(self.angle_error)
+        reward += angle_improvement * 2.0
+
+        # 3. 面朝目標的靜態維持獎勵
+        if abs(self.angle_error) < 0.2: # 約面向目標正負 11 度內
+            reward += 0.2
+
+        # ==================================================
+        # Goal Reached
+        # ==================================================
         if dist_to_target < 15:
             reward += 150
             terminated = True
             print("✨ 成功抵達目標")
 
+        # ==================================================
+        # Obstacle Collision
+        # ==================================================
         for obs_item in self.obstacles:
             dist_to_obs = np.linalg.norm(self.robot_pos - obs_item["pos"])
             if dist_to_obs < (obs_item["radius"] + 8):
@@ -210,12 +226,22 @@ class RobotNavigationEnvGUI(gym.Env):
                 print("💥 撞上障礙物")
                 break
 
-        if (self.robot_pos[0] <= 8 or self.robot_pos[0] >= self.map_size - 8 or
-            self.robot_pos[1] <= 8 or self.robot_pos[1] >= self.map_size - 8):
+        # ==================================================
+        # Wall Collision
+        # ==================================================
+        if (
+            self.robot_pos[0] <= 8 or
+            self.robot_pos[0] >= self.map_size - 8 or
+            self.robot_pos[1] <= 8 or
+            self.robot_pos[1] >= self.map_size - 8
+        ):
             reward -= 120
             terminated = True
             print("🧱 撞牆")
 
+        # ==================================================
+        # Render
+        # ==================================================
         if self.render_mode:
             self.render()
 

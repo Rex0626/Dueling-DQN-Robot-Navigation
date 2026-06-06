@@ -1,31 +1,28 @@
-import argparse  # 📥 新增：引進參數解析模組
+import argparse
 import csv
 from environment import RobotNavigationEnvGUI
 from agent import DuelingDQNAgent
 
 def main():
-    # ─── 1. 設定命令列參數解析 ───
     parser = argparse.ArgumentParser(description="Dueling-DQN 機器人訓練參數設定")
     parser.add_argument('--episodes', type=int, default=600, help='設定訓練的總回合數 (預設: 600)')
     parser.add_argument('--lr', type=float, default=1e-3, help='設定神經網路學習率 (預設: 0.001)')
     parser.add_argument('--render', action='store_true', help='是否開啟 pygame GUI')
     args = parser.parse_args()
 
-    # ─── 2. 初始化環境與智慧體 ───
+    # 優化：配合環境，將 state_dim 更改為 10
     env = RobotNavigationEnvGUI(render_mode=args.render)
-    agent = DuelingDQNAgent(state_dim=12, action_dim=4, enable_safety_layer=True)
+    agent = DuelingDQNAgent(state_dim=10, action_dim=4, enable_safety_layer=True)
     
-    # 嘗試載入先前訓練過的大腦
     load_model_filename = 'robot_model_level4.pth'
     save_model_filename = 'robot_model_level4.pth'
     has_old_model = agent.load_model(load_model_filename)
     
     if has_old_model:
-        # 💡 關鍵：給予 30% 的隨機探索率，強迫大腦在原有基礎上適應「會飄移的終點」
-        agent.epsilon = 0.5  
-        print("💡 已成功繼承 Level 4 經驗，並將 Epsilon 重設為 0.30 進行適應性訓練。") 
+        # 優化：降低繼承模型後的隨機探索率，防止「災難性遺忘」破壞原有權重
+        agent.epsilon = 0.2  
+        print("💡 已成功繼承經驗，將 Epsilon 設為 0.2 進行微調探索。") 
     
-    # ─── 3. 套用命令列帶入的參數 ───
     episodes = args.episodes
     batch_size = 64
     history_data = []
@@ -52,13 +49,14 @@ def main():
             if terminated and reward > 20: success_occurred = 1
                 
             agent.memory.push(state, action, reward, next_state, terminated)
+            
+            # 確保記憶庫有足夠的資料才開始訓練
             if global_steps % 4 == 0 and len(agent.memory) > 1000:
                 agent.train(batch_size)
           
             state = next_state
             episode_reward += reward
             step_count += 1
-
             global_steps += 1
             
             if global_steps % 500 == 0:
@@ -78,7 +76,6 @@ def main():
             'success': success_occurred
         })
 
-    # ─── 4. 數據持久化儲存 ───
     print("\n🏁 訓練完成！正在處理數據持久化...")
     agent.save_model(save_model_filename)
     

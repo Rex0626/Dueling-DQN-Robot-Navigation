@@ -27,24 +27,31 @@ class DuelingDQNAgent:
         self.target_net = DuelingQNetwork(state_dim,action_dim).to(self.device)
         
         self.target_net.load_state_dict(self.policy_net.state_dict())
+        # 在 DuelingDQNAgent 的 __init__ 中加入 Scheduler
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
+        # 每 1000 次訓練 (step)，學習率衰減為原來的 0.99 倍
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.99)
+        # 接著在 train() 函數的最末端（self.optimizer.step() 之後）加入：
+        self.scheduler.step()
         self.memory = ReplayBuffer(50000)
         
         self.epsilon = 1.0
         self.epsilon_decay = 0.998
-        self.epsilon_min = 0.1
+        self.epsilon_min = 0.15
         self.gamma = 0.99
 
     def select_action(self, state):
         # 🔍 【異常響應機制 (Safety Layer)】
         if self.enable_safety_layer:
-            # 優化：配合環境維度縮減，更新讀取索引
-            target_dist = state[1] * 400.0  # 索引 1: 機器人與目標的當前距離
-            lidar_front = state[6] * 400.0  # 索引 6: 正前方雷達的距離 (-90度為3, 0度為6, 90度為9)
+            target_dist = state[1] * 400.0  
+            lidar_front = state[6] * 400.0  
             
             if lidar_front < 45.0 and lidar_front < target_dist:
-                lidar_left = state[3] * 400.0   # -90 度雷達
-                lidar_right = state[9] * 400.0  # 90 度雷達
+                # 🐞 修正：校正左右雷達的物理對應位置
+                lidar_right = state[3] * 400.0  # -90 度 (機器人右側)
+                lidar_left = state[9] * 400.0   # 90 度 (機器人左側)
+                
+                # 1是左轉，2是右轉。如果左邊空間大就左轉(1)，否則右轉(2)
                 return 1 if lidar_left > lidar_right else 2
                 
         if random.random() < self.epsilon:

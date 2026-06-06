@@ -59,7 +59,7 @@ def main():
             step_count += 1
             global_steps += 1
             
-            if global_steps % 500 == 0:
+            if global_steps % 2000 == 0:
                 agent.target_net.load_state_dict(agent.policy_net.state_dict())
                 print(f"🔄 [Global Step {global_steps}] 同步目標網路 (Target Network) 權重")
             

@@ -79,7 +79,40 @@ class RobotNavigationEnvGUI(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # 隨機起始位置
+        # ==================================================
+        # 💡 Level 5 終極升級：隨機生成動態障礙物的初始位置
+        # ==================================================
+        self.obstacles = []
+        
+        # 定義 4 個障礙物的物理特性 (不綁定座標)
+        obstacle_configs = [
+            {"radius": 25, "speed": 1.5, "max_drift": 35},
+            {"radius": 35, "speed": 1.0, "max_drift": 40},
+            {"radius": 25, "speed": 2.0, "max_drift": 30},
+            {"radius": 20, "speed": 1.5, "max_drift": 25},
+        ]
+
+        for config in obstacle_configs:
+            # 計算安全邊距，確保障礙物的最大飄移範圍不會超出地圖 (400x400)
+            pad = config["radius"] + config["max_drift"] + 10
+            
+            # 隨機生成基準中心點
+            base_x = random.uniform(pad, self.map_size - pad)
+            base_y = random.uniform(pad, self.map_size - pad)
+            base_pos = np.array([base_x, base_y])
+
+            self.obstacles.append({
+                "base_pos": base_pos.copy(),
+                "pos": base_pos.copy(),
+                "radius": config["radius"],
+                "speed": config["speed"],
+                "max_drift": config["max_drift"],
+                "angle": random.uniform(0, 2*np.pi) # 隨機初始移動方向
+            })
+
+        # ==================================================
+        # 隨機起始位置 (必須避開剛生成的隨機障礙物)
+        # ==================================================
         while True:
             candidate_pos = np.array([
                 random.uniform(30, 370),
@@ -87,8 +120,8 @@ class RobotNavigationEnvGUI(gym.Env):
             ])
             safe = True
             for obs in self.obstacles:
-                dist = np.linalg.norm(candidate_pos - obs["pos"])
-                if dist < (obs["radius"] + 25):
+                # 確保機器人初始位置不會落在障礙物的活動範圍內
+                if np.linalg.norm(candidate_pos - obs["base_pos"]) < (obs["radius"] + obs["max_drift"] + 15):
                     safe = False
                     break
             if safe:
@@ -97,7 +130,9 @@ class RobotNavigationEnvGUI(gym.Env):
 
         self.robot_theta = random.uniform(0, 2*np.pi)
 
-        # 隨機目標位置
+        # ==================================================
+        # 隨機目標位置 (必須避開剛生成的隨機障礙物與機器人)
+        # ==================================================
         while True:
             candidate_target = np.array([
                 random.uniform(30, 370),
@@ -106,8 +141,7 @@ class RobotNavigationEnvGUI(gym.Env):
             dist_to_robot = np.linalg.norm(candidate_target - self.robot_pos)
             safe = True
             for obs in self.obstacles:
-                dist = np.linalg.norm(candidate_target - obs["pos"])
-                if dist < (obs["radius"] + 25):
+                if np.linalg.norm(candidate_target - obs["base_pos"]) < (obs["radius"] + obs["max_drift"] + 15):
                     safe = False
                     break
             if safe and dist_to_robot > 120:

@@ -14,7 +14,7 @@ def main():
     env = RobotNavigationEnvGUI(render_mode=args.render)
     agent = DuelingDQNAgent(state_dim=10, action_dim=4, enable_safety_layer=True)
     
-    load_model_filename = 'robot_model_level4.pth'
+    load_model_filename = 'robot_model_level5.pth'
     save_model_filename = 'robot_model_level5.pth'
     has_old_model = agent.load_model(load_model_filename)
     

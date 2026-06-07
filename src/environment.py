@@ -9,119 +9,67 @@ class RobotNavigationEnvGUI(gym.Env):
     def __init__(self, render_mode=True):
         super(RobotNavigationEnvGUI, self).__init__()
 
-        # ==================================================
-        # Observation Space (優化：由 12 維降至 10 維，移除絕對座標 X, Y)
-        # 1: 機器人朝向角度 (theta)
-        # 2: 與目標的相對距離
-        # 3: 與目標的相對角度誤差
-        # 4-10: 7根雷達的測距值
-        # ==================================================
-        self.observation_space = spaces.Box(
-            low=-10.0,
-            high=10.0,
-            shape=(10,),
-            dtype=np.float32
-        )
-
-        # ==================================================
-        # Action Space
-        # 0 = forward
-        # 1 = turn left
-        # 2 = turn right
-        # 3 = brake
-        # ==================================================
+        # 觀察空間 (10維度：機器人角度、目標距離、角度誤差、7根雷達)
+        self.observation_space = spaces.Box(low=-10.0, high=10.0, shape=(10,), dtype=np.float32)
         self.action_space = spaces.Discrete(4)
 
-        # ==================================================
-        # Map Settings
-        # ==================================================
         self.map_size = 400
         self.linear_vel = 8.0
         self.angular_vel = np.deg2rad(15)
 
-        # ==================================================
-        # Robot
-        # ==================================================
         self.robot_pos = np.array([50.0, 350.0])
         self.robot_theta = 0.0
-
-        # ==================================================
-        # Target
-        # ==================================================
         self.target_pos = np.array([350.0, 50.0])
 
-        # ==================================================
-        # Obstacles
-        # ==================================================
-        self.obstacles = [
-            {"pos": np.array([120.0, 150.0]), "radius": 25},
-            {"pos": np.array([220.0, 220.0]), "radius": 35},
-            {"pos": np.array([320.0, 120.0]), "radius": 25},
-            {"pos": np.array([180.0, 80.0]),  "radius": 20},
-        ]
-
-        # ==================================================
-        # Episode Settings
-        # ==================================================
+        self.obstacles = []
         self.max_steps = 300
         self.current_step = 0
 
-        # ==================================================
-        # Render
-        # ==================================================
         self.render_mode = render_mode
         if self.render_mode:
             pygame.init()
             self.screen = pygame.display.set_mode((self.map_size, self.map_size))
-            pygame.display.set_caption("Level4 Navigation - Optimized")
+            pygame.display.set_caption("Level 5: Ultimate Dynamic Obstacles (6 Obstacles)")
             self.clock = pygame.time.Clock()
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
         # ==================================================
-        # 💡 Level 5 終極升級：隨機生成動態障礙物的初始位置
+        # 1. 隨機生成動態障礙物 (總數提升至 6 個)
         # ==================================================
         self.obstacles = []
-        
-        # 定義 4 個障礙物的物理特性 (不綁定座標)
         obstacle_configs = [
-            {"radius": 25, "speed": 1.5, "max_drift": 35},
-            {"radius": 35, "speed": 1.0, "max_drift": 40},
-            {"radius": 25, "speed": 2.0, "max_drift": 30},
-            {"radius": 20, "speed": 1.5, "max_drift": 25},
+            {"radius": 25, "speed": 2.5},
+            {"radius": 35, "speed": 1.5},
+            {"radius": 25, "speed": 3.0},
+            {"radius": 20, "speed": 2.0},
+            # 👇 新增的兩個障礙物
+            {"radius": 15, "speed": 3.5}, # 體積小、速度極快的干擾型障礙物
+            {"radius": 30, "speed": 1.8}, # 體積偏大、速度中等的壓迫型障礙物
         ]
 
         for config in obstacle_configs:
-            # 計算安全邊距，確保障礙物的最大飄移範圍不會超出地圖 (400x400)
-            pad = config["radius"] + config["max_drift"] + 10
-            
-            # 隨機生成基準中心點
+            # 確保生成位置不會一開始就卡在牆壁裡
+            pad = config["radius"] + 5
             base_x = random.uniform(pad, self.map_size - pad)
             base_y = random.uniform(pad, self.map_size - pad)
-            base_pos = np.array([base_x, base_y])
-
+            
             self.obstacles.append({
-                "base_pos": base_pos.copy(),
-                "pos": base_pos.copy(),
+                "pos": np.array([base_x, base_y]),
                 "radius": config["radius"],
                 "speed": config["speed"],
-                "max_drift": config["max_drift"],
-                "angle": random.uniform(0, 2*np.pi) # 隨機初始移動方向
+                "angle": random.uniform(0, 2*np.pi) # 隨機決定一開始的移動方向
             })
 
         # ==================================================
-        # 隨機起始位置 (必須避開剛生成的隨機障礙物)
+        # 2. 隨機起始位置 (避開動態障礙物)
         # ==================================================
         while True:
-            candidate_pos = np.array([
-                random.uniform(30, 370),
-                random.uniform(30, 370)
-            ])
+            candidate_pos = np.array([random.uniform(30, 370), random.uniform(30, 370)])
             safe = True
             for obs in self.obstacles:
-                # 確保機器人初始位置不會落在障礙物的活動範圍內
-                if np.linalg.norm(candidate_pos - obs["base_pos"]) < (obs["radius"] + obs["max_drift"] + 15):
+                if np.linalg.norm(candidate_pos - obs["pos"]) < (obs["radius"] + 40):
                     safe = False
                     break
             if safe:
@@ -131,17 +79,14 @@ class RobotNavigationEnvGUI(gym.Env):
         self.robot_theta = random.uniform(0, 2*np.pi)
 
         # ==================================================
-        # 隨機目標位置 (必須避開剛生成的隨機障礙物與機器人)
+        # 3. 隨機目標位置 (避開動態障礙物與機器人)
         # ==================================================
         while True:
-            candidate_target = np.array([
-                random.uniform(30, 370),
-                random.uniform(30, 200)
-            ])
+            candidate_target = np.array([random.uniform(30, 370), random.uniform(30, 200)])
             dist_to_robot = np.linalg.norm(candidate_target - self.robot_pos)
             safe = True
             for obs in self.obstacles:
-                if np.linalg.norm(candidate_target - obs["base_pos"]) < (obs["radius"] + obs["max_drift"] + 15):
+                if np.linalg.norm(candidate_target - obs["pos"]) < (obs["radius"] + 40):
                     safe = False
                     break
             if safe and dist_to_robot > 120:
@@ -183,12 +128,8 @@ class RobotNavigationEnvGUI(gym.Env):
             angle_to_target += 2*np.pi
 
         self.angle_error = (angle_to_target - self.robot_theta)
-        self.angle_error = np.arctan2(
-            np.sin(self.angle_error),
-            np.cos(self.angle_error)
-        )
+        self.angle_error = np.arctan2(np.sin(self.angle_error), np.cos(self.angle_error))
 
-        # 優化：移除絕對座標 robot_pos[0] 與 robot_pos[1]，只回傳相對資訊與雷達
         return np.array([
             self.robot_theta / (2*np.pi),
             dist_to_target / 400.0,
@@ -199,10 +140,25 @@ class RobotNavigationEnvGUI(gym.Env):
     def step(self, action):
         self.current_step += 1
         prev_dist = np.linalg.norm(self.robot_pos - self.target_pos)
-        prev_angle_error = abs(self.angle_error) # 💡 新增：記錄執行動作前的角度誤差
+        prev_angle_error = abs(self.angle_error)
 
         # ==================================================
-        # Action
+        # 💡 動態障礙物移動與邊界反彈邏輯
+        # ==================================================
+        for obs in self.obstacles:
+            # 依據當前速度與方向移動
+            obs["pos"][0] += obs["speed"] * np.cos(obs["angle"])
+            obs["pos"][1] += obs["speed"] * np.sin(obs["angle"])
+            
+            # 邊界反彈處理 (撞牆後反射)
+            if obs["pos"][0] - obs["radius"] <= 0 or obs["pos"][0] + obs["radius"] >= self.map_size:
+                obs["angle"] = np.pi - obs["angle"] # X軸反彈
+            
+            if obs["pos"][1] - obs["radius"] <= 0 or obs["pos"][1] + obs["radius"] >= self.map_size:
+                obs["angle"] = -obs["angle"]        # Y軸反彈
+
+        # ==================================================
+        # 機器人動作更新
         # ==================================================
         if action == 0:
             self.robot_pos[0] += (self.linear_vel * np.cos(self.robot_theta))
@@ -215,71 +171,48 @@ class RobotNavigationEnvGUI(gym.Env):
             pass
 
         self.robot_theta %= (2*np.pi)
-        obs = self._get_obs() # 這裡會更新 self.angle_error
+        obs_state = self._get_obs()
 
         dist_to_target = np.linalg.norm(self.robot_pos - self.target_pos)
         terminated = False
         truncated = (self.current_step >= self.max_steps)
 
-        # ==================================================
-        # 💡 優化版 Reward Shaping (治癒原地踏步)
-        # ==================================================
-        reward = -0.1  # 基礎時間懲罰
-
-        # 1. 距離獎勵 (只有在前進時才結算)
+        # 獎勵函數 (Reward Shaping)
+        reward = -0.1
         if action == 0:
             reward += (prev_dist - dist_to_target) * 2.0
         elif action == 3:
-            reward -= 1.0  # 嚴懲無意義的煞車發呆
+            reward -= 1.0  
 
-        # 2. 角度改善獎勵 (解決原地打轉與左右震盪的核心)
-        # 如果新角度誤差比舊角度小，代表轉向正確，給予豐厚獎勵；反之懲罰。
         angle_improvement = prev_angle_error - abs(self.angle_error)
         reward += angle_improvement * 2.0
 
-        # 3. 面朝目標的靜態維持獎勵
-        if abs(self.angle_error) < 0.2: # 約面向目標正負 11 度內
+        if abs(self.angle_error) < 0.2:
             reward += 0.2
 
-        # ==================================================
-        # Goal Reached
-        # ==================================================
         if dist_to_target < 15:
             reward += 150
             terminated = True
             print("✨ 成功抵達目標")
 
-        # ==================================================
-        # Obstacle Collision
-        # ==================================================
         for obs_item in self.obstacles:
             dist_to_obs = np.linalg.norm(self.robot_pos - obs_item["pos"])
             if dist_to_obs < (obs_item["radius"] + 8):
                 reward -= 80
                 terminated = True
-                print("💥 撞上障礙物")
+                print("💥 撞上動態障礙物")
                 break
 
-        # ==================================================
-        # Wall Collision
-        # ==================================================
-        if (
-            self.robot_pos[0] <= 8 or
-            self.robot_pos[0] >= self.map_size - 8 or
-            self.robot_pos[1] <= 8 or
-            self.robot_pos[1] >= self.map_size - 8
-        ):
+        if (self.robot_pos[0] <= 8 or self.robot_pos[0] >= self.map_size - 8 or
+            self.robot_pos[1] <= 8 or self.robot_pos[1] >= self.map_size - 8):
             reward -= 120
             terminated = True
             print("🧱 撞牆")
 
-        # ==================================================
-        # Render
-        # ==================================================
         if self.render_mode:
             self.render()
 
-        return obs, reward, terminated, truncated, {}
+        return obs_state, reward, terminated, truncated, {}
 
     def render(self):
         for event in pygame.event.get():
@@ -289,8 +222,13 @@ class RobotNavigationEnvGUI(gym.Env):
 
         self.screen.fill((255,255,255))
 
+        # 繪製動態障礙物 (加入移動方向指示線增加視覺效果)
         for obs in self.obstacles:
-            pygame.draw.circle(self.screen, (255,0,0), obs["pos"].astype(int), obs["radius"])
+            pygame.draw.circle(self.screen, (255,50,50), obs["pos"].astype(int), obs["radius"])
+            # 畫出障礙物的移動向量
+            end_x = obs["pos"][0] + obs["radius"] * np.cos(obs["angle"])
+            end_y = obs["pos"][1] + obs["radius"] * np.sin(obs["angle"])
+            pygame.draw.line(self.screen, (150,0,0), obs["pos"].astype(int), (int(end_x), int(end_y)), 3)
 
         pygame.draw.circle(self.screen, (0,255,0), self.target_pos.astype(int), 10)
         pygame.draw.circle(self.screen, (0,0,255), self.robot_pos.astype(int), 8)

@@ -15,7 +15,7 @@ def main():
     agent = DuelingDQNAgent(state_dim=10, action_dim=4, enable_safety_layer=True)
     
     load_model_filename = 'robot_model_level4.pth'
-    save_model_filename = 'robot_model_level4.pth'
+    save_model_filename = 'robot_model_level5.pth'
     has_old_model = agent.load_model(load_model_filename)
     
     if has_old_model:
@@ -27,8 +27,8 @@ def main():
     batch_size = 64
     history_data = []
 
-    log_filename = 'training_log_level4.csv'
-    print(f"🚀 開始訓練 Level 4：隨機起終點導航，總計執行 {episodes} 個回合...")
+    log_filename = 'training_log_level5.csv'
+    print(f"🚀 開始訓練 Level 5：隨機起終點導航，總計執行 {episodes} 個回合...")
     
     global_steps = 0
 
